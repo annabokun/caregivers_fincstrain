@@ -1,0 +1,678 @@
+---
+title: "Move-In Patterns Among Latino Caregivers & Care Recipients"
+author: "Anna Bokun"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+html_document:
+    toc: true  # Optional: Add a table of contents
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(flextable)
+
+# Load your dataset
+ACC <- read.csv("/Users/annabokun/Google Drive/My Drive/UT-Austin Postdoc/Projects/Caregivers - Housing Health Paradox/Replication Files/Data/ACC.csv")
+
+
+# Word tables
+format_table <- function(df, caption, col_names = NULL) {
+  if(is.null(col_names)) {
+    col_names <- names(df)
+  }
+  
+  ft <- flextable(df) %>%
+    set_caption(caption) %>%
+    autofit()
+  
+  if(!is.null(col_names)) {
+    ft <- set_header_labels(ft, values = setNames(col_names, names(df)))
+  }
+  
+  # Add some styling
+  ft <- theme_zebra(ft) %>%
+    bold(part = "header")
+  
+  return(ft)
+}
+
+
+
+# Create a function for formatting tables
+format_table <- function(df, caption, col_names = NULL) {
+  if(is.null(col_names)) {
+    col_names <- names(df)
+  }
+  
+  kable(df, caption = caption, col.names = col_names) %>%
+    kable_styling(bootstrap_options = c("striped"), full_width = FALSE)
+}
+
+# Important: Create the move-in typology variable at the beginning
+# This creates the variables I'll use throughout the document
+ACC <- ACC %>%
+  mutate(
+    # Create the move-in typology variable
+    move_in_type = case_when(
+      # Category 1: Parent likely moved in with adult child for care
+      MOVED7 == 1 &                                    # CR moved since last contact
+        (WHYMOVE7 == 2 | TAKECARE7 == 1) ~ 1,          # Moved to be near children OR needed help
+      
+      # Category 2: Adult child moved in for caregiving reasons
+      MOVEIN7 == 1 &                                  # Anyone moved in with you since last contact?
+        (WHOMOV71 %in% 3:4) &                         # Children or children-in-law moved in
+        TAKECARE7 == 1 ~ 2,                           # Person moved in because I needed help
+      
+      # Category 3: Adult child moved in for housing
+      MOVEIN7 == 1 &                                  # Anyone moved in with you since last contact?
+        (WHOMOV71 %in% 3:4) &                         # Children or children-in-law moved in
+        PLASTAY7 == 2 ~ 3,                            # 2 = "Needed place to stay"
+      
+      # Category 4: Adult child moved in for other reasons
+      MOVEIN7 == 1 &                                  # Anyone moved in with you since last contact?
+        (WHOMOV71 %in% 3:4) &                         # Children or children-in-law moved in
+        YOUOTH7 == 3 ~ 4,                             # 3 = "other" reasons
+      
+      # Category 5: General move-in by adult child 
+      MOVEIN7 == 1 &                                  # Anyone moved in with you since last contact?
+        (WHOMOV71 %in% 3:4) ~ 5,                      # Children or children-in-law moved in
+      
+      # Category 6: No movement (default)
+      TRUE ~ 6
+    ),
+    
+    # Create a labeled version for better readability
+    move_in_type_label = case_when(
+      move_in_type == 1 ~ "Parent likely moved in with adult child for care",
+      move_in_type == 2 ~ "Adult child likely moved in for caregiving reasons",
+      move_in_type == 3 ~ "Adult child likely moved in for housing",
+      move_in_type == 4 ~ "Adult child likely moved in for other reasons",
+      move_in_type == 5 ~ "General move-in by adult child (unspecified reason)",
+      move_in_type == 6 ~ "No movement"
+    ),
+    
+    # Create enriched typology that combines move-in type with household characteristics
+    enriched_typology = case_when(
+      # Parent moved in for care + caregiver is head of household
+      move_in_type == 1 & cg_HOH == 1 ~ "Parent moved in for care (caregiver is HOH)",
+      
+      # Parent moved in for care + caregiver is not head of household
+      move_in_type == 1 & cg_HOH == 0 ~ "Parent moved in for care (caregiver is not HOH)",
+      
+      # Adult child moved in for caregiving + caregiver is head of household
+      move_in_type == 2 & cg_HOH == 1 ~ "Adult child moved in to care (caregiver is HOH)",
+      
+      # Adult child moved in for caregiving + caregiver is not head of household
+      move_in_type == 2 & cg_HOH == 0  ~ "Adult child moved in to care (caregiver is not HOH)",
+      
+      # Adult child moved in for caregiving + parent owns home
+      move_in_type == 2 & LL76 == 1 ~ "Adult child moved in to care (parent owns home)",
+      
+      # Adult child moved in for caregiving + parent doesn't own home
+      move_in_type == 2 & LL76 == 2 ~ "Adult child moved in to care (parent doesn't own home)",
+      
+      # Adult child moved in for housing + parent owns home
+      move_in_type == 3 & LL76 == 1 ~ "Adult child moved in for housing (parent owns home)",
+      
+      # Adult child moved in for housing + parent doesn't own home
+      move_in_type == 3 & LL76 == 2 ~ "Adult child moved in for housing (parent doesn't own home)",
+      
+      # Adult child moved in for other reasons + parent owns home
+      move_in_type == 4 & LL76 == 1 ~ "Adult child moved in for other reasons (parent owns home)",
+      
+      # Adult child moved in for other reasons + parent doesn't own home
+      move_in_type == 4 & LL76 == 2 ~ "Adult child moved in for other reasons (parent doesn't own home)",
+      
+      # Any co-residence not captured by other categories with movement
+      move_in_type == 5 & cg_coreside == 1 ~ "Adult child moved in (general)",
+      
+      # Co-residence without recent movement
+      move_in_type == 6 & cg_coreside == 1 ~ "Co-residence (no recent movement)",
+      
+      # No co-residence
+      TRUE ~ "Not co-residing"
+    )
+  )
+```
+
+# Introduction
+
+This document presents analysis of move-in patterns among Latino caregivers and care recipients from wave 7 (2010-2011) of the Hispanic Established Populations for the Epidemiologic Study of the Elderly (HEPESE) data. The analysis examines these patterns from both the care recipient's and caregiver's perspectives, with a focus on who moves in with whom and for what reasons.
+
+# 1. Care Recipient Perspective
+
+This section examines move-in patterns from the perspective of the care recipients.
+
+## 1.1. Move-In Scenarios
+
+```{r recipient-moves}
+# Summary of people moving in with care recipients
+recipient_moves <- ACC %>%
+  summarize(
+    total_recipients = n(),
+    anyone_moved_in = sum(MOVEIN7 == 1, na.rm = TRUE),
+    moved_in_for_care = sum(TAKECARE7 == 1, na.rm = TRUE),
+    moved_in_need_place = sum(PLASTAY7 == 2, na.rm = TRUE)
+  ) %>%
+  mutate(
+    pct_anyone_moved = round(100 * anyone_moved_in / total_recipients, 1),
+    pct_moved_for_care = round(100 * moved_in_for_care / total_recipients, 1),
+    pct_moved_need_place = round(100 * moved_in_need_place / total_recipients, 1)
+  )
+
+# Create an easier-to-read table
+recipient_moves_table <- data.frame(
+  Scenario = c(
+    "Someone moved in with parent",
+    "Person moved in to provide care for parent",
+    "Person moved in because they needed a place to stay"
+  ),
+  Count = c(
+    recipient_moves$anyone_moved_in,
+    recipient_moves$moved_in_for_care,
+    recipient_moves$moved_in_need_place
+  ),
+  Percentage = paste0(
+    c(
+      recipient_moves$pct_anyone_moved,
+      recipient_moves$pct_moved_for_care,
+      recipient_moves$pct_moved_need_place
+    ),
+    "%"
+  )
+)
+
+format_table(
+  recipient_moves_table,
+  caption = paste0("Move-in Scenarios from the Care Recipient/Parent Perspective (N=", 
+                   recipient_moves$total_recipients, ")"),
+  col_names = c("Scenario", "Count", "% of All Care Recipients/Parents")
+)
+```
+
+## 1.2. Who Moved In
+
+```{r who-moved-in}
+# Define relationship lookup
+rel_codes <- c(
+  "1" = "Head of Household",
+  "2" = "Spouse",
+  "3" = "Son/Daughter",
+  "4" = "Children-In-Law",
+  "5" = "Grandchild",
+  "6" = "Parent",
+  "7" = "Brother or Sister",
+  "8" = "Nephew or Niece",
+  "9" = "Cousin",
+  "10" = "Aunt/Uncle",
+  "11" = "Great Grandchild",
+  "12" = "Other Relative",
+  "13" = "Friend",
+  "14" = "Boarder or Roomer",
+  "15" = "Paid Employee",
+  "16" = "Other",
+  "17" = "Sister/Brother In-Law"
+)
+
+# Function to safely convert factors to numeric
+safe_as_numeric <- function(x) {
+  as.numeric(as.character(x))
+}
+
+# Analyze who moved in
+who_moved_in <- ACC %>%
+  filter(MOVEIN7 == 1) %>%
+  select(WHOMOV71) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "person_num",
+    values_to = "rel_code",
+    values_drop_na = TRUE
+  ) %>%
+  # Convert to numeric if not already
+  mutate(rel_code = safe_as_numeric(rel_code)) %>%
+  # Map codes to labels
+  mutate(relationship = factor(rel_code, 
+                               levels = as.numeric(names(rel_codes)),
+                               labels = rel_codes)) %>%
+  # Group relationships for clearer presentation
+  mutate(
+    rel_group = case_when(
+      relationship %in% c("Son/Daughter", "Children-In-Law") ~ "Adult Children (inc. in-laws)",
+      relationship == "Spouse" ~ "Spouse",
+      relationship %in% c("Grandchild", "Great Grandchild") ~ "Grandchildren",
+      relationship %in% c("Brother or Sister", "Sister/Brother In-Law", 
+                          "Nephew or Niece", "Cousin", "Aunt/Uncle", "Other Relative") ~ "Other relatives",
+      TRUE ~ "Non-relatives"
+    )
+  ) %>%
+  group_by(rel_group) %>%
+  summarize(count = n(), .groups = 'drop') %>%
+  mutate(percentage = round(100 * count / sum(count), 1)) %>%
+  arrange(desc(count))
+
+format_table(
+  who_moved_in,
+  caption = paste0("Who Moved In with Care Recipients (Among ", sum(who_moved_in$count), " Move-ins)"),
+  col_names = c("Relationship to Care Recipient", "Count", "Percentage")
+)
+```
+
+
+## 1.3. Move-In Reasons by Relationship
+
+```{r reasons-by-relationship}
+# Now analyze the relationship between who moved in and why they moved in
+primary_mover_reasons <- ACC %>%
+  filter(MOVEIN7 == 1, !is.na(WHOMOV71)) %>%
+  # Convert to numeric if not already
+  mutate(rel_code = safe_as_numeric(WHOMOV71)) %>%
+  # Map codes to labels
+  mutate(relationship = factor(rel_code, 
+                               levels = as.numeric(names(rel_codes)),
+                               labels = rel_codes)) %>%
+  # Group relationships for clearer presentation
+  mutate(
+    rel_group = case_when(
+      relationship %in% c("Son/Daughter", "Children-In-Law") ~ "Adult Children (inc. in-laws)",
+      relationship == "Spouse" ~ "Spouse",
+      relationship %in% c("Grandchild", "Great Grandchild") ~ "Grandchildren",
+      relationship %in% c("Brother or Sister", "Sister/Brother In-Law", 
+                          "Nephew or Niece", "Cousin", "Aunt/Uncle", "Other Relative") ~ "Other relatives",
+      TRUE ~ "Non-relatives"
+    )
+  ) %>%
+  # Group by relationship and count reason types
+  group_by(rel_group) %>%
+  summarize(
+    total = n(),
+    for_care = sum(TAKECARE7 == 1, na.rm = TRUE),
+    for_care_pct = round(100 * sum(TAKECARE7 == 1, na.rm = TRUE) / n(), 1),
+    needed_place = sum(PLASTAY7 == 2, na.rm = TRUE), 
+    needed_place_pct = round(100 * sum(PLASTAY7 == 2, na.rm = TRUE) / n(), 1),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(total))
+
+format_table(
+  primary_mover_reasons,
+  caption = "Reasons for Moving In by Relationship Type (Primary Mover Only)",
+  col_names = c("Relationship to Care Recipient", "Total Count", "Moved for Care", 
+                "% Moved for Care", "Needed Place", "% Needed Place")
+)
+```
+
+## 1.4. Adult Child Move-Ins
+
+```{r adult-child-movers}
+# Analyze who moves in with whom when the informant is the primary mover
+informant_relationships <- ACC %>%
+  # Filter to cases where informant is related as a child/child-in-law and moved in
+  filter(MOVEIN7 == 1, !is.na(WHOMOV71), 
+         RELSUBJ7I %in% c(3, 4), # 3=Son/Daughter, 4=Son-In-Law/Daughter-In-Law
+         WHOMOV71 %in% c(3, 4)) %>% # Primary mover is a child/child-in-law
+  summarize(
+    total_child_moveins = n(),
+    cg_is_hoh = sum(cg_HOH == 1, na.rm = TRUE),
+    cg_is_hoh_pct = round(100 * sum(cg_HOH == 1, na.rm = TRUE) / n(), 1),
+    elder_owns_home = sum(LL76 == 1, na.rm = TRUE),
+    elder_owns_home_pct = round(100 * sum(LL76 == 1, na.rm = TRUE) / n(), 1),
+    moved_for_care = sum(TAKECARE7 == 1, na.rm = TRUE),
+    moved_for_care_pct = round(100 * sum(TAKECARE7 == 1, na.rm = TRUE) / n(), 1),
+    needed_place = sum(PLASTAY7 == 2, na.rm = TRUE), 
+    needed_place_pct = round(100 * sum(PLASTAY7 == 2, na.rm = TRUE) / n(), 1),
+    financial_strain = sum(cg_finc_strain == 1, na.rm = TRUE),
+    financial_strain_pct = round(100 * sum(cg_finc_strain == 1, na.rm = TRUE) / n(), 1)
+  )
+
+# Create a formatted table for adult child movers
+child_mover_table <- data.frame(
+  Characteristic = c(
+    "Total adult children who moved in",
+    "Caregiver is head of household",
+    "Care recipient/parent owns the home",
+    "Moved in to provide care",
+    "Moved in because needed place",
+    "Reports financial strain"
+  ),
+  Count = c(
+    informant_relationships$total_child_moveins,
+    informant_relationships$cg_is_hoh,
+    informant_relationships$elder_owns_home,
+    informant_relationships$moved_for_care,
+    informant_relationships$needed_place,
+    informant_relationships$financial_strain
+  ),
+  Percentage = paste0(
+    c(
+      NA, # No percentage for total
+      informant_relationships$cg_is_hoh_pct,
+      informant_relationships$elder_owns_home_pct,
+      informant_relationships$moved_for_care_pct,
+      informant_relationships$needed_place_pct,
+      informant_relationships$financial_strain_pct
+    ),
+    ifelse(is.na(
+      c(
+        NA,
+        informant_relationships$cg_is_hoh_pct,
+        informant_relationships$elder_owns_home_pct,
+        informant_relationships$moved_for_care_pct,
+        informant_relationships$needed_place_pct,
+        informant_relationships$financial_strain_pct
+      )), "", "%")
+  )
+)
+
+format_table(
+  child_mover_table,
+  caption = "Characteristics of Adult Children Who Moved In With Parents",
+  col_names = c("Characteristic", "Count", "Percentage")
+)
+```
+
+## 1.5. Care Recipient Mobility
+
+```{r elder-mobility}
+# Elders who moved
+elder_moved <- ACC %>%
+  summarize(
+    total = n(),
+    elder_moved = sum(MOVED7 == 1, na.rm = TRUE),
+    moved_near_children = sum(WHYMOVE7 == 2, na.rm = TRUE)
+  ) %>%
+  mutate(
+    pct_elder_moved = round(100 * elder_moved / total, 1),
+    pct_moved_near_children = round(100 * moved_near_children / total, 1)
+  )
+
+elder_moved_table <- data.frame(
+  Scenario = c(
+    "Care Recipient/Parent moved since last contact",
+    "Care Recipient/Parent moved to be near children"
+  ),
+  Count = c(
+    elder_moved$elder_moved,
+    elder_moved$moved_near_children
+  ),
+  Percentage = paste0(
+    c(
+      elder_moved$pct_elder_moved,
+      elder_moved$pct_moved_near_children
+    ),
+    "%"
+  )
+)
+
+format_table(
+  elder_moved_table,
+  caption = paste0("Care Recipient/Parent Mobility Patterns (N=", elder_moved$total, ")"),
+  col_names = c("Scenario", "Count", "% of All Care Recipients")
+)
+```
+
+# 2. Caregiver Perspective
+
+This section examines move-in patterns from the perspective of the caregivers, primarily focusing on household structure and headship.
+
+## 2.1. Co-residence Patterns
+
+```{r coresidence}
+# Co-residence analysis
+cg_coresidence_analysis <- ACC %>%
+  summarize(
+    total_dyads = n(),
+    co_residing = sum(cg_coreside == 1, na.rm = TRUE),
+    elder_owns_home = sum(LL76 == 1, na.rm = TRUE),
+    elder_owns_and_cg_coresides = sum(LL76 == 1 & cg_coreside == 1, na.rm = TRUE),
+    caregiver_is_hoh = sum(cg_HOH == 1, na.rm = TRUE),
+    cg_hoh_and_cg_coresides = sum(cg_HOH == 1 & cg_coreside == 1, na.rm = TRUE)
+  ) %>%
+  mutate(
+    pct_coresiding = round(100 * co_residing / total_dyads, 1),
+    pct_elder_owns = round(100 * elder_owns_home / total_dyads, 1),
+    pct_elder_owns_cg_coresides = round(100 * elder_owns_and_cg_coresides / total_dyads, 1),
+    pct_cg_hoh = round(100 * caregiver_is_hoh / total_dyads, 1),
+    pct_cg_hoh_cg_coresides = round(100 * cg_hoh_and_cg_coresides / total_dyads, 1)
+  )
+
+cg_coresidence_table <- data.frame(
+  Pattern = c(
+    "Care recipient and caregiver co-reside",
+    "Care recipient owns their home",
+    "Care recipient owns home AND co-resides with caregiver",
+    "Caregiver is head of household",
+    "Caregiver is head of household AND co-resides with the care recipient"
+  ),
+  Count = c(
+    cg_coresidence_analysis$co_residing,
+    cg_coresidence_analysis$elder_owns_home,
+    cg_coresidence_analysis$elder_owns_and_cg_coresides,
+    cg_coresidence_analysis$caregiver_is_hoh,
+    cg_coresidence_analysis$cg_hoh_and_cg_coresides
+  ),
+  Percentage = paste0(
+    c(
+      cg_coresidence_analysis$pct_coresiding,
+      cg_coresidence_analysis$pct_elder_owns,
+      cg_coresidence_analysis$pct_elder_owns_cg_coresides,
+      cg_coresidence_analysis$pct_cg_hoh,
+      cg_coresidence_analysis$pct_cg_hoh_cg_coresides
+    ),
+    "%"
+  )
+)
+
+format_table(
+  cg_coresidence_table,
+  caption = paste0("Co-residence Patterns (N=", cg_coresidence_analysis$total_dyads, ")"),
+  col_names = c("Living Arrangement Pattern", "Count", "% of All Caregiver-Care Recipient Dyads")
+)
+```
+
+## 2.2. Move-In Typology
+
+```{r typology}
+# Create a summary of the move-in typology
+move_in_typology_counts <- ACC %>%
+  group_by(move_in_type_label) %>%
+  summarize(
+    count = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    percentage = round(100 * count / sum(count), 1)
+  )
+
+format_table(
+  move_in_typology_counts,
+  caption = paste0("Move-In Typology (N=", sum(move_in_typology_counts$count), ")"),
+  col_names = c("Move-In Type", "Count", "Percentage")
+)
+```
+
+
+## 2.3. Financial Strain by Living Arrangement
+
+```{r financial-strain}
+# Financial strain by move-in typology
+financial_strain <- ACC %>%
+  filter(!is.na(move_in_type_label), !is.na(cg_finc_strain)) %>%
+  group_by(move_in_type_label) %>%
+  summarize(
+    n = n(),
+    financial_strain_count = sum(cg_finc_strain == 1, na.rm = TRUE),
+    financial_strain_pct = round(100 * mean(cg_finc_strain == 1, na.rm = TRUE), 1),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(financial_strain_pct))
+
+format_table(
+  financial_strain,
+  caption = "Financial Strain by Move-In Type",
+  col_names = c("Move-In Type", "N", "# with Financial Strain", "% with Financial Strain")
+)
+```
+
+
+# 3. Move-In Typologies 
+
+This section presents a more refined analysis of move-in patterns.
+
+## 3.1. Move-In Types for Adult Child Caregivers
+
+```{r adult-child-basic}
+# Adult Child Only Analysis - Basic Move-In Types
+adult_child_basic <- ACC %>%
+  filter(RELSUBJ7I %in% c(3, 4)) %>%  # 3=Son/Daughter, 4=Son-In-Law/Daughter-In-Law
+  group_by(move_in_type_label) %>%
+  summarize(
+    n = n(),
+    pct_of_children = round(100 * n() / sum(!is.na(move_in_type_label)), 1),
+    pct_strain = round(100 * mean(cg_finc_strain == 1, na.rm = TRUE), 1),
+    pct_female = round(100 * mean(cg_female == 1, na.rm = TRUE), 1),
+    mean_age = round(mean(AGE7I, na.rm = TRUE), 1),
+    pct_married = round(100 * mean(cg_married == 1, na.rm = TRUE), 1),
+    pct_medicaid = round(100 * mean(cg_medicaid_dum == 1, na.rm = TRUE), 1),
+    mean_ADL_hours = round(mean(cg_hours_adl, na.rm = TRUE), 1),
+    mean_IADL_hours = round(mean(cg_hours_iadl, na.rm = TRUE), 1),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(pct_strain))
+
+format_table(
+  adult_child_basic,
+  caption = "Move-In Types for Adult Child Caregivers",
+  col_names = c("Move-In Type", "Count", "% of Adult Children", "% with Financial Strain", 
+                "% Female", "Mean Age", "% Married", "% Medicaid", "Mean ADL Hours", "Mean IADL Hours")
+)
+```
+
+
+## 3.2. Detailed Living Arrangements of Adult Child Caregivers
+
+```{r adult-child-enriched}
+# Adult Child Analysis - Enriched Typology
+adult_child_enriched <- ACC %>%
+  filter(RELSUBJ7I %in% c(3, 4)) %>%  # 3=Son/Daughter, 4=Son-In-Law/Daughter-In-Law
+  group_by(enriched_typology) %>%
+  summarize(
+    n = n(),
+    pct_of_children = round(100 * n() / sum(!is.na(enriched_typology)), 1),
+    pct_strain = round(100 * mean(cg_finc_strain == 1, na.rm = TRUE), 1),
+    pct_female = round(100 * mean(cg_female == 1, na.rm = TRUE), 1),
+    mean_age = round(mean(AGE7I, na.rm = TRUE), 1),
+    pct_married = round(100 * mean(cg_married == 1, na.rm = TRUE), 1),
+    pct_medicaid = round(100 * mean(cg_medicaid_dum == 1, na.rm = TRUE), 1),
+    mean_ADL_hours = round(mean(cg_hours_adl, na.rm = TRUE), 1),
+    mean_IADL_hours = round(mean(cg_hours_iadl, na.rm = TRUE), 1),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(pct_strain))
+
+format_table(
+  adult_child_enriched,
+  caption = "Detailed Living Arrangements of Adult Child Caregivers",
+  col_names = c("Living Arrangement", "Count", "% of Adult Children", "% with Financial Strain", 
+                "% Female", "Mean Age", "% Married", "% Medicaid", "Mean ADL Hours", "Mean IADL Hours")
+)
+```
+
+
+
+## 3.4. Dementia Status by Move-In Type
+
+```{r dementia-status}
+# Dementia status by move-in type for adult children
+adult_child_dementia <- ACC %>%
+  filter(!is.na(RELSUBJ7I) & RELSUBJ7I %in% c(3, 4)) %>%  # Ensure adult child caregivers exist
+  filter(!is.na(move_in_type_label)) %>%  # Ensure move-in labels exist
+  group_by(move_in_type_label) %>%
+  summarize(
+    n = n(),
+    n_dementia = sum(cr_dementia_binary == 1, na.rm = TRUE),
+    n_no_dementia = sum(cr_dementia_binary == 0, na.rm = TRUE),
+    n_dementia_valid = sum(!is.na(cr_dementia_binary)),  # Count valid cases
+    pct_dementia = ifelse(n_dementia_valid > 0, 
+                          round(100 * n_dementia / n_dementia_valid, 1), 
+                          NA_real_),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(pct_dementia))
+
+format_table(
+  adult_child_dementia,
+  caption = "Dementia Status by Move-In Type",
+  col_names = c("Move-In Type", "N", "# with Dementia", "# without Dementia", 
+                "Valid Cases", "% with Dementia")
+)
+```
+
+
+
+## 3.5. Adult child moved in vs. parent moved in
+```{r acc-parents}
+key_arrangements <- ACC %>%
+  filter(
+    RELSUBJ7I %in% c(3, 4), # Adult children only
+    move_in_type_label %in% c("Parent likely moved in with adult child for care", "Adult child likely moved in for caregiving reasons")
+  ) %>%
+  group_by(move_in_type_label) %>%
+  summarize(
+    n = n(),
+    mean_age = mean(AGE7I, na.rm = TRUE),
+    pct_female = mean(cg_female == 1, na.rm = TRUE) * 100,
+    pct_married = mean(cg_married == 1, na.rm = TRUE) * 100,
+    pct_medicaid = mean(cg_medicaid_dum == 1, na.rm = TRUE) * 100,
+    financial_strain_pct = mean(cg_finc_strain == 1, na.rm = TRUE) * 100,
+    mean_ADL_hours = mean(cg_hours_adl, na.rm = TRUE),
+    mean_IADL_hours = mean(cg_hours_iadl, na.rm = TRUE),
+    cr_dementia = mean(cr_dementia_binary == 1, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    across(where(is.numeric) & !n, ~round(., 1))
+  )
+
+format_table(
+  key_arrangements,
+  caption = "Comparison: Parent Moved In vs. Adult Child Moved In",
+  col_names = c("Living Arrangement", "N", "Mean Age", "% Female", "% Married", "% Medicaid",  
+                "% with Financial Strain", "Mean ADL Hours", "Mean IADL Hours", "% CR with Dementia")
+)
+```
+
+
+# Key Findings and Conclusions
+
+Based on the analysis presented in this document, several key patterns emerge regarding move-in scenarios among Latino caregivers and care recipients:
+
+1.) Bidirectional Mobility Patterns: The data reveals that caregiving arrangements involve movement in both directions—adult children moving in with parents (accounting for 74.5% of move-ins [70/94], by relationship to care recipient) and parents moving in with adult children (31/659 = 4.7% of cases). The motivations behind these moves differ significantly and impact financial strain outcomes.
+
+
+2.) Divergent Financial Strain by Move-In Type: Financial strain varies considerably by living arrangement:
+
+- Adult children who moved in specifically for caregiving purposes experience the highest rates of financial strain (22.2%)
+- Adult children whose parents who moved in for care show similar high rates (19.4%)
+
+
+3.) Home Ownership Dynamics: Home ownership appears to be a crucial factor in financial strain:
+
+- Adult children who moved in for care when the parent owns the home experience particularly high financial strain (35.7%)
+
+
+4.) Dementia as a Driver of Living Arrangements: Care recipients with dementia are significantly more likely to have moved in with their adult children (64.5% vs. 44.4% when the child moved in), suggesting that cognitive impairment may precipitate more dramatic household restructuring.
+
+
+5.) Caregiving Intensity Variations: Adult children who moved in specifically for caregiving report providing substantially more hours of assistance (8.1 ADL hours and 8.0 IADL hours) compared to those who moved in for their housing needs (2.6-3.4 hours), indicating that move-in motivation correlates strongly with caregiving intensity.
+
+
+6.) Marriage Status as a Buffer: Adult children who had parents move in show dramatically higher marriage rates (90%) than adult children who moved in with  their parents for caregiving (53.8%), suggesting that spousal support may influence living arrangement decisions.
+

@@ -1,0 +1,593 @@
+---
+title: "Adult Children Caregivers Analysis"
+author: "HEPESE Data Analysis"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: tango
+    df_print: paged
+  pdf_document:
+    toc: true
+    toc_depth: 2
+  word_document:
+    toc: true
+    reference_docx: word-styles-reference.docx
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                     fig.width = 10, fig.height = 7) # Default figure dimensions
+
+# Load required libraries
+library(dplyr)
+library(knitr)
+library(tidyr)
+library(kableExtra)
+library(ggplot2)
+library(scales)
+library(purrr) # Add purrr for map functions
+
+# Read the data
+# Adjust the path to your data file
+ACC <- read.csv("/Users/annabokun/Google Drive/My Drive/UT-Austin Postdoc/Projects/Caregivers - Housing Health Paradox/Replication Files/Data/ACC.csv")
+```
+
+## Introduction
+
+This document analyzes the characteristics of Mexican-American adult child caregivers from the Hispanic Established Populations for Epidemiologic Study of the Elderly (HEPESE) Wave 7 dataset (2010-2011). The analysis focuses specifically on adult children who provide care to their aging parents, examining different groups based on co-residence and household headship patterns.
+
+## Methodology
+
+We examine three distinct groups of adult children caregivers:
+
+1. **Co-residing adult children caregivers**: Adult children who live in the same household as their parent care recipients
+2. **Adult children who moved in with parents (general)**: Adult children who moved in with their parents without specifying caregiving as the primary reason
+3. **Adult children who moved in for caregiving**: Adult children who moved in specifically to provide care to their parents
+
+For each group, we analyze demographic characteristics, socioeconomic status, health status, caregiving intensity, and financial strain.
+
+```{r data-prep}
+# Filter for adult children caregivers
+adult_children <- ACC %>%
+  filter(RELSUBJ7I %in% c(3, 4))  # 3 = Child, 4 = Child-in-law
+
+# TABLE 1: All co-residing adult children caregivers
+coresiding <- adult_children %>%
+  filter(coreside == 1)
+
+# TABLE 2: Adult children caregivers who moved in with parents (general)
+# Category 5: General move-in by adult child
+moved_in_general <- adult_children %>%
+  filter(move_in_type == 5)
+
+# TABLE 3: Adult children caregivers who moved in for caregiving
+# Category 2: Adult child likely moved in for caregiving reasons
+moved_in_care <- adult_children %>%
+  filter(move_in_type == 2)
+
+# Create a function to calculate summary statistics
+create_summary_table <- function(data_group, group_name) {
+  
+  # Sample size
+  n_total <- nrow(data_group)
+  if(n_total == 0) {
+    return(data.frame(
+      characteristic = "No data available",
+      level = "",
+      count = 0,
+      percentage = NA
+    ))
+  }
+  
+  # Gender
+  gender <- data_group %>%
+    group_by(gender = ifelse(cg_female == 1, "Female", "Male")) %>%
+    summarise(count = n()) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Gender",
+           level = gender) %>%
+    select(characteristic, level, count, percentage)
+  
+  # Age
+  age <- data_group %>%
+    group_by(age = cg_age_cat) %>%
+    summarise(count = n()) %>%
+    filter(!is.na(age)) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Age group",
+           level = age) %>%
+    select(characteristic, level, count, percentage) %>%
+    arrange(match(level, c("18-44", "45-54", "55-64", "65-74")))
+  
+  # Education
+  education <- data_group %>%
+    group_by(education = cg_educ_cat) %>%
+    summarise(count = n()) %>%
+    filter(!is.na(education)) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Education",
+           level = education) %>%
+    select(characteristic, level, count, percentage) %>%
+    arrange(match(level, c("0-6 years", "7-11 years", "High school", "Bachelor's+")))
+  
+  # Income
+  income <- data_group %>%
+    group_by(income = cg_inc_cat) %>%
+    summarise(count = n()) %>%
+    filter(!is.na(income)) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Income",
+           level = income) %>%
+    select(characteristic, level, count, percentage) %>%
+    arrange(match(level, c("<$10k", "$10-19k", "$20-49k", "$50k+")))
+  
+  # Marital status
+  marital <- data_group %>%
+    group_by(marital = ifelse(cg_married == 1, "Married", "Not married")) %>%
+    summarise(count = n()) %>%
+    filter(!is.na(marital)) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Marital status",
+           level = marital) %>%
+    select(characteristic, level, count, percentage)
+  
+  # Health status
+  health <- data_group %>%
+    group_by(health = cg_health) %>%
+    summarise(count = n()) %>%
+    filter(!is.na(health)) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Health status",
+           level = health) %>%
+    select(characteristic, level, count, percentage)
+  
+  # Financial strain
+  financial <- data_group %>%
+    group_by(strain = ifelse(cg_finc_strain == 1, "Has financial strain", "No financial strain")) %>%
+    summarise(count = n()) %>%
+    filter(!is.na(strain)) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Financial strain",
+           level = strain) %>%
+    select(characteristic, level, count, percentage)
+  
+  # Caregiving intensity
+  intensity <- data_group %>%
+    group_by(intensity = cg_intensity) %>%
+    summarise(count = n()) %>%
+    filter(!is.na(intensity)) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Caregiving intensity",
+           level = intensity) %>%
+    select(characteristic, level, count, percentage) %>%
+    arrange(match(level, c("Low", "Moderate", "High")))
+  
+  # Household headship
+  hoh <- data_group %>%
+    group_by(hoh = ifelse(cg_HOH == 1, "Head of household", "Not head of household")) %>%
+    summarise(count = n()) %>%
+    filter(!is.na(hoh)) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Household headship",
+           level = hoh) %>%
+    select(characteristic, level, count, percentage)
+  
+  # Medicaid status
+  medicaid <- data_group %>%
+    group_by(medicaid = ifelse(cg_medicaid_dum == 1, "On Medicaid", "Not on Medicaid")) %>%
+    summarise(count = n()) %>%
+    filter(!is.na(medicaid)) %>%
+    mutate(percentage = round(count/sum(count)*100, 1),
+           characteristic = "Medicaid status",
+           level = medicaid) %>%
+    select(characteristic, level, count, percentage)
+  
+  # Mean ADL and IADL hours
+  adl_hours <- mean(data_group$cg_hours_adl, na.rm = TRUE)
+  iadl_hours <- mean(data_group$cg_hours_iadl, na.rm = TRUE)
+  
+  caregiving_hours <- data.frame(
+    characteristic = c("Caregiving hours", "Caregiving hours"),
+    level = c("Mean ADL hours/day", "Mean IADL hours/day"),
+    count = c(round(adl_hours, 2), round(iadl_hours, 2)),
+    percentage = NA
+  )
+  
+  # Check if the parent has dementia
+  if("cr_dementia" %in% names(data_group)) {
+    dementia <- data_group %>%
+      filter(!is.na(cr_dementia)) %>%
+      group_by(dementia = ifelse(cr_dementia == 1, "Parent has dementia", "Parent does not have dementia")) %>%
+      summarise(count = n()) %>%
+      mutate(percentage = round(count/sum(count)*100, 1),
+             characteristic = "Parent cognitive status",
+             level = dementia) %>%
+      select(characteristic, level, count, percentage)
+  } else {
+    dementia <- data.frame(
+      characteristic = "Parent cognitive status",
+      level = "Data not available",
+      count = NA,
+      percentage = NA
+    )
+  }
+  
+  # Combine all summaries
+  summary_table <- bind_rows(
+    gender, age, education, income, marital, health, medicaid, financial, intensity, hoh, caregiving_hours, dementia
+  )
+  
+  # Add group name and sample size
+  attr(summary_table, "group_name") <- group_name
+  attr(summary_table, "sample_size") <- n_total
+  
+  return(summary_table)
+}
+
+# Create the three tables
+table1 <- create_summary_table(coresiding, "All Co-residing Adult Children Caregivers")
+table2 <- create_summary_table(moved_in_general, "Adult Children Who Moved In with Parents (General)")
+table3 <- create_summary_table(moved_in_care, "Adult Children Who Moved In for Caregiving")
+```
+
+## Results
+
+### Table 1: Characteristics of All Co-residing Adult Children Caregivers
+
+```{r table1}
+# Format and display table with kable and kableExtra
+kable(table1, 
+      col.names = c("Characteristic", "Category", "n", "%"),
+      caption = paste("All Co-residing Adult Children Caregivers (N =", attr(table1, "sample_size"), ")")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                full_width = TRUE, 
+                position = "center",
+                font_size = 12) %>%
+  column_spec(1, bold = TRUE) %>%
+  collapse_rows(columns = 1, valign = "top") %>%
+  row_spec(0, bold = TRUE, background = "#f8f8f8") %>%
+  footnote(general = "Data source: HEPESE Wave 7 (2010-2011)")
+```
+
+### Table 2: Characteristics of Adult Children Who Moved In with Parents (General)
+
+```{r table2}
+kable(table2, 
+      col.names = c("Characteristic", "Category", "n", "%"),
+      caption = paste("Adult Children Who Moved In with Parents - General (N =", attr(table2, "sample_size"), ")")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                full_width = TRUE, 
+                position = "center",
+                font_size = 12) %>%
+  column_spec(1, bold = TRUE) %>%
+  collapse_rows(columns = 1, valign = "top") %>%
+  row_spec(0, bold = TRUE, background = "#f8f8f8") %>%
+  footnote(general = "Data source: HEPESE Wave 7 (2010-2011). Category 5: General move-in by adult child.")
+```
+
+### Table 3: Characteristics of Adult Children Who Moved In for Caregiving
+
+```{r table3}
+kable(table3, 
+      col.names = c("Characteristic", "Category", "n", "%"),
+      caption = paste("Adult Children Who Moved In for Caregiving (N =", attr(table3, "sample_size"), ")")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                full_width = TRUE, 
+                position = "center",
+                font_size = 12) %>%
+  column_spec(1, bold = TRUE) %>%
+  collapse_rows(columns = 1, valign = "top") %>%
+  row_spec(0, bold = TRUE, background = "#f8f8f8") %>%
+  footnote(general = "Data source: HEPESE Wave 7 (2010-2011). Category 2: Adult child likely moved in for caregiving reasons.")
+```
+
+## Comparing Financial Strain by Household Headship
+
+```{r financial-strain-by-hoh, fig.width=10, fig.height=7}
+# Extract and prepare financial strain data stratified by HOH status
+prepare_financial_strain_data <- function(stratified_table) {
+  group_name <- attr(stratified_table, "group_name")
+  
+  # Extract financial strain data
+  fin_strain_data <- stratified_table %>%
+    filter(characteristic == "Financial strain" & level == "Has financial strain") %>%
+    select(hoh_status, percentage, count) %>%
+    mutate(group = group_name)
+  
+  return(fin_strain_data)
+}
+
+# Combine financial strain data from all tables
+financial_strain_by_hoh <- bind_rows(
+  prepare_financial_strain_data(table1_stratified),
+  prepare_financial_strain_data(table2_stratified),
+  prepare_financial_strain_data(table3_stratified)
+)
+
+# Create more descriptive labels
+financial_strain_by_hoh <- financial_strain_by_hoh %>%
+  mutate(
+    group_label = case_when(
+      group == "All Co-residing Adult Children Caregivers" ~ "All Co-residing",
+      group == "Adult Children Who Moved In with Parents (General)" ~ "Moved In (General)",
+      group == "Adult Children Who Moved In for Caregiving" ~ "Moved In for Caregiving",
+      TRUE ~ group
+    ),
+    combined_label = paste(group_label, hoh_status)
+  )
+
+# Plot financial strain comparison by HOH status
+ggplot(financial_strain_by_hoh, 
+       aes(x = reorder(combined_label, percentage), y = percentage, fill = hoh_status)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  geom_text(aes(label = paste0(percentage, "%")), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 4) +
+  scale_y_continuous(limits = c(0, max(financial_strain_by_hoh$percentage, na.rm = TRUE) * 1.2),
+                    labels = function(x) paste0(x, "%")) +
+  labs(title = "Financial Strain by Household Headship Status",
+       subtitle = "Percentage reporting financial strain across caregiver groups",
+       x = "",
+       y = "Percentage with Financial Strain",
+       fill = "Household Headship") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),
+    axis.title.y = element_text(size = 12),
+    panel.grid.major.x = element_blank(),
+    aspect.ratio = 0.5
+  )
+```
+
+## Comparing Caregiving Hours by Household Headship
+
+```{r caregiving-hours-by-hoh, fig.width=10, fig.height=7}
+# Extract and prepare caregiving hours data stratified by HOH status
+prepare_caregiving_hours_data <- function(stratified_table) {
+  group_name <- attr(stratified_table, "group_name")
+  
+  # Extract caregiving hours data
+  hours_data <- stratified_table %>%
+    filter(characteristic == "Caregiving hours") %>%
+    mutate(
+      hours_type = level,
+      hours = count,
+      group = group_name
+    ) %>%
+    select(hoh_status, hours_type, hours, group)
+  
+  return(hours_data)
+}
+
+# Combine caregiving hours data from all tables
+caregiving_hours_by_hoh <- bind_rows(
+  prepare_caregiving_hours_data(table1_stratified),
+  prepare_caregiving_hours_data(table2_stratified),
+  prepare_caregiving_hours_data(table3_stratified)
+)
+
+# Create more descriptive labels
+caregiving_hours_by_hoh <- caregiving_hours_by_hoh %>%
+  mutate(
+    group_label = case_when(
+      group == "All Co-residing Adult Children Caregivers" ~ "All Co-residing",
+      group == "Adult Children Who Moved In with Parents (General)" ~ "Moved In (General)",
+      group == "Adult Children Who Moved In for Caregiving" ~ "Moved In for Caregiving",
+      TRUE ~ group
+    ),
+    hours_type = gsub("Mean ", "", hours_type),
+    combined_label = paste(group_label, hoh_status)
+  )
+
+# Plot caregiving hours comparison by HOH status
+ggplot(caregiving_hours_by_hoh, 
+       aes(x = combined_label, y = hours, fill = hours_type)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) +
+  geom_text(aes(label = round(hours, 1)), 
+            position = position_dodge(width = 0.7), 
+            vjust = -0.5, 
+            size = 3.5) +
+  scale_fill_brewer(palette = "Set1") +
+  labs(title = "Caregiving Hours by Household Headship Status",
+       subtitle = "Mean hours per day spent on ADL and IADL assistance",
+       x = "",
+       y = "Hours per day",
+       fill = "Care Type") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.title.y = element_text(size = 12),
+    panel.grid.major.x = element_blank(),
+    aspect.ratio = 0.5
+  )
+``` financial strain"), 
+       aes(x = reorder(group, percentage), y = percentage, fill = group)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = paste0(percentage, "%")), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 4) +
+  scale_y_continuous(limits = c(0, max(financial_strain_data$percentage, na.rm = TRUE) * 1.2),
+                    labels = function(x) paste0(x, "%")) +
+  labs(title = "Financial Strain Among Different Groups of Adult Children Caregivers",
+       subtitle = "Percentage reporting financial strain",
+       x = "",
+       y = "Percentage") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),
+    axis.title.y = element_text(size = 12),
+    panel.grid.major.x = element_blank(),
+    aspect.ratio = 0.6  # Adjust this value to make the plot taller
+  )
+```
+
+## Comparing Medicaid Status Across Groups
+
+```{r medicaid-plot, fig.width=10, fig.height=6}
+# Create a direct data frame with Medicaid percentages
+medicaid_percentages <- data.frame(
+  group = c(
+    attr(table1, "group_name"),
+    attr(table2, "group_name"),
+    attr(table3, "group_name")
+  )
+)
+
+# Function to safely extract Medicaid percentage
+extract_medicaid_pct <- function(table) {
+  medicaid_rows <- table %>% filter(characteristic == "Medicaid status" & level == "On Medicaid")
+  if(nrow(medicaid_rows) > 0) {
+    return(medicaid_rows$percentage[1])
+  } else {
+    return(NA)
+  }
+}
+
+# Function to safely extract Medicaid count
+extract_medicaid_count <- function(table) {
+  medicaid_rows <- table %>% filter(characteristic == "Medicaid status" & level == "On Medicaid")
+  if(nrow(medicaid_rows) > 0) {
+    return(medicaid_rows$count[1])
+  } else {
+    return(NA)
+  }
+}
+
+# Add percentage and count columns
+medicaid_percentages$percentage <- c(
+  extract_medicaid_pct(table1),
+  extract_medicaid_pct(table2),
+  extract_medicaid_pct(table3)
+)
+
+medicaid_percentages$count <- c(
+  extract_medicaid_count(table1),
+  extract_medicaid_count(table2),
+  extract_medicaid_count(table3)
+)
+
+# Create a simple bar chart with the medicaid_percentages data
+ggplot(medicaid_percentages, aes(x = reorder(group, percentage), y = percentage, fill = group)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = paste0(percentage, "%")), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 4) +
+  scale_y_continuous(limits = c(0, max(medicaid_percentages$percentage, na.rm = TRUE) * 1.2),
+                    labels = function(x) paste0(x, "%")) +
+  labs(title = "Medicaid Enrollment Among Different Groups of Adult Children Caregivers",
+       subtitle = "Percentage enrolled in Medicaid",
+       x = "",
+       y = "Percentage") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),
+    axis.title.y = element_text(size = 12),
+    panel.grid.major.x = element_blank(),
+    aspect.ratio = 0.6
+  )
+```
+
+## Comparing Caregiving Hours Across Groups
+
+```{r caregiving-hours, fig.width=10, fig.height=6}
+# Extract caregiving hours data for visualization
+extract_caregiving_hours <- function(table_data) {
+  group_name <- attr(table_data, "group_name")
+  
+  hours_data <- table_data %>%
+    filter(characteristic == "Caregiving hours") %>%
+    mutate(group = group_name,
+           hours = count) %>%
+    select(group, level, hours)
+  
+  return(hours_data)
+}
+
+# Combine caregiving hours data from all tables
+caregiving_hours_data <- bind_rows(
+  extract_caregiving_hours(table1),
+  extract_caregiving_hours(table2),
+  extract_caregiving_hours(table3)
+)
+
+# Convert to long format for plotting
+caregiving_hours_long <- caregiving_hours_data %>%
+  pivot_wider(names_from = level, values_from = hours) %>%
+  rename(ADL = `Mean ADL hours/day`, IADL = `Mean IADL hours/day`) %>%
+  pivot_longer(cols = c(ADL, IADL), names_to = "hours_type", values_to = "hours")
+
+# Plot caregiving hours comparison
+ggplot(caregiving_hours_long, aes(x = group, y = hours, fill = hours_type)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) +
+  geom_text(aes(label = round(hours, 1)), 
+            position = position_dodge(width = 0.7), 
+            vjust = -0.5, 
+            size = 4) +
+  scale_y_continuous(limits = c(0, max(caregiving_hours_long$hours, na.rm = TRUE) * 1.2)) +
+  labs(title = "Caregiving Hours Among Different Groups of Adult Children Caregivers",
+       subtitle = "Mean hours per day spent on ADL and IADL assistance",
+       x = "",
+       y = "Hours per day",
+       fill = "Care Type") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),
+    axis.title.y = element_text(size = 12),
+    panel.grid.major.x = element_blank(),
+    aspect.ratio = 0.6  # Adjust this value to make the plot taller
+  )
+```
+
+## Discussion
+
+This analysis reveals several important patterns among adult children caregivers in the HEPESE dataset:
+
+1. **Financial strain:** Adult children who moved in specifically for caregiving purposes appear to experience higher rates of financial strain compared to general co-residing caregivers. This suggests that the motivation behind co-residence may influence financial outcomes.
+
+2. **Caregiving intensity:** The data shows variation in caregiving intensity (measured in hours spent on ADL and IADL assistance) across different groups, with those who moved in specifically for caregiving spending more hours on caregiving tasks.
+
+3. **Demographic differences:** There are notable demographic differences between adult children who moved in specifically for caregiving versus those who co-reside for other reasons, particularly in terms of gender distribution, marital status, and income levels.
+
+4. **Household headship:** The pattern of household headship varies across groups, which may have implications for financial decision-making, resource allocation, and caregiver autonomy within the household.
+
+These findings have important implications for policy and practice, particularly in the development of supportive programs for Mexican-American family caregivers. Understanding the unique characteristics and needs of different types of adult child caregivers can help in designing more targeted interventions to support their caregiving roles while minimizing financial strain.
+
+## Limitations
+
+Several limitations should be noted when interpreting these results:
+
+1. The data is cross-sectional, limiting our ability to establish causal relationships between co-residence patterns and financial outcomes.
+
+2. The sample sizes for some subgroups are relatively small, which may affect the reliability of percentage estimates.
+
+3. The HEPESE data is specific to Mexican-Americans in southwestern states and may not generalize to other Latino populations or regions.
+
+4. Self-reported measures of financial strain and caregiving hours may be subject to recall bias or social desirability effects.
+
+## Conclusion
+
+This analysis provides important insights into the characteristics of Mexican-American adult children who provide care to their aging parents. The findings highlight the heterogeneity within this population and the importance of considering different pathways to co-residence when developing policies and programs to support family caregivers.
+
+Future research should explore these patterns longitudinally to better understand how co-residence arrangements evolve over time and their long-term implications for caregiver financial well-being.
