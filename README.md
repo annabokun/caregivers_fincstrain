@@ -20,9 +20,9 @@ This repository contains the R scripts, data structure, and output used in a stu
 
 ## 📊 Outputs
 
-- **Tables**: Descriptive statistics, regression outputs, PSM covariate balance (SMDs).
-- **Figures**: Covariate balance plots, predicted probabilities from regression models.
-- **Code**: Modular, includes cleaning scripts, modeling pipeline, and visualization.
+- **Tables**: Descriptive statistics, regression outputs, PSM covariate balance.
+- **Figures**: Covariate balance plots, forest plots from regression models for presentations.
+- **Code**: Cleaning scripts, modeling pipeline, and visualization.
 
 ## 📌 Highlights
 
