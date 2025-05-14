@@ -51,7 +51,7 @@ If referencing this work, please cite:
 
 **Anna Bokun**  
 Sociologist & Demographer  
-Postdoctoral Fellow, Population Research Center at University of Texas at Austin
+Postdoctoral Researcher, Population Research Center at University of Texas at Austin
 
 ## 📬 Contact
 
