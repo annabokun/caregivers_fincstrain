@@ -1,4 +1,4 @@
-# Financial Strain Among Co-Residing Family Caregivers of the Oldest Old
+# Financial Strain Among Co-Residing Adult Children Caregivers of Older Parents
 
 This repository contains the R scripts, data structure, and output used in a study examining whether adult children who co-reside with their oldest-old parents (aged 80+) experience heightened financial strain. The study focuses on Mexican American caregivers and uses data from the **Hispanic Established Populations for the Epidemiologic Study of the Elderly (HEPESE, Wave 7, 2010-11)**.
 
